@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import streamlit as st
 import tensorflow as tf
-from PIL import Image
+from PIL import Image, ImageOps
 
 # Configuración de la página
 st.set_page_config(
@@ -87,11 +87,15 @@ def load_model():
         st.stop()
 
 
+# Procesamiento corregido de imágenes
 def prepare_image(image):
+    image = ImageOps.exif_transpose(image)
     image = image.convert("RGB")
-    image = image.resize(IMG_SIZE)
+    image = image.resize(IMG_SIZE, Image.Resampling.BILINEAR)
 
-    arr = np.asarray(image, dtype=np.float32) / 255.0
+    # MobileNetV2 ya realiza la normalización internamente
+    arr = np.asarray(image, dtype=np.float32)
+
     return np.expand_dims(arr, axis=0)
 
 
@@ -109,28 +113,47 @@ st.write(
     "inteligencia artificial y contribuye al cuidado del medio ambiente."
 )
 
-st.caption(
-    "Categorías: cartón, vidrio, metal, papel, plástico y basura general."
-)
-
-st.divider()
-
 class_names = load_class_names()
 model = load_model()
 
-uploaded_file = st.file_uploader(
-    "📷 Selecciona una imagen",
-    type=["jpg", "jpeg", "png"]
+categorias = ", ".join(
+    LABELS_ES.get(label, label) for label in class_names
 )
 
+st.caption(f"Categorías: {categorias}.")
+
+st.divider()
+
+# Selección del método de captura
+st.subheader("📷 Captura de imágenes")
+
+opcion = st.radio(
+    "Selecciona el método de captura:",
+    ["Tomar fotografía", "Subir imagen"],
+    horizontal=True
+)
+
+if opcion == "Tomar fotografía":
+    uploaded_file = st.camera_input(
+        "Toma una fotografía del residuo"
+    )
+else:
+    uploaded_file = st.file_uploader(
+        "Selecciona una imagen",
+        type=["jpg", "jpeg", "png"]
+    )
+
+
+# Clasificación de la imagen
 if uploaded_file is not None:
 
     try:
-        image = Image.open(uploaded_file).convert("RGB")
+        image = Image.open(uploaded_file)
+        image = ImageOps.exif_transpose(image).convert("RGB")
 
         st.image(
             image,
-            caption="Imagen cargada",
+            caption="Imagen analizada",
             use_container_width=True
         )
 
@@ -158,7 +181,10 @@ if uploaded_file is not None:
             st.metric("Residuo identificado", label_es)
 
         with col2:
-            st.metric("Confianza del modelo", f"{confidence:.2f}%")
+            st.metric(
+                "Confianza del modelo",
+                f"{confidence:.2f}%"
+            )
 
         if confidence < 60:
             st.warning(
@@ -168,7 +194,7 @@ if uploaded_file is not None:
         else:
             st.success(f"Predicción principal: {label_es}")
 
-        st.subheader("🌱 Recomendación")
+        st.subheader("🌱 Recomendación de reciclaje")
 
         st.info(
             RECOMMENDATIONS.get(
@@ -201,7 +227,7 @@ if uploaded_file is not None:
         st.error(f"Error al procesar la imagen: {e}")
 
 else:
-    st.info("Carga una imagen para comenzar.")
+    st.info("Toma una fotografía o sube una imagen para comenzar.")
 
 st.divider()
 
